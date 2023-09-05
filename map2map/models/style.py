@@ -95,7 +95,6 @@ class ConvStyled3d(nn.Module):
         nn.init.kaiming_uniform_(self.style_weight, a=math.sqrt(5),
                                  mode='fan_in', nonlinearity='leaky_relu')
         self.style_bias = nn.Parameter(torch.ones(in_chan))  # NOTE: init to 1
-
         if resample is None:
             K3 = (kernel_size,) * 3
             self.weight = nn.Parameter(torch.empty(out_chan, in_chan, *K3))
@@ -156,7 +155,7 @@ class ConvStyled3d(nn.Module):
 
         w = w.reshape(N * C0, C1, *K3)
         x = x.reshape(1, N * Cin, *DHWin)
-        x = self.conv(x, w, bias=self.bias, stride=self.stride, groups=N)
+        x = self.conv(x, w, bias=self.bias.repeat(N), stride=self.stride, groups=N)
         _, _, *DHWout = x.shape
         x = x.reshape(N, Cout, *DHWout)
 

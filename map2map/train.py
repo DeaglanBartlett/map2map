@@ -292,6 +292,7 @@ def train(epoch, loader, model, criterion,
         logger.add_scalar('loss/epoch/train', epoch_loss[0],
                           global_step=epoch+1)
 
+        skip_chan = 0
         fig = plt_slices(
             input[-1], output[-1, skip_chan:], target[-1, skip_chan:],
             output[-1, skip_chan:] - target[-1, skip_chan:],
@@ -351,6 +352,7 @@ def validate(epoch, loader, model, criterion, logger, device, args):
     if rank == 0:
         logger.add_scalar('loss/epoch/val', epoch_loss[0],
                           global_step=epoch+1)
+        skip_chan = 0
 
         fig = plt_slices(
             input[-1], output[-1, skip_chan:], target[-1, skip_chan:],

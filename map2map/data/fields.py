@@ -56,6 +56,10 @@ class FieldDataset(Dataset):
 
         tgt_file_lists = [sorted(glob(p)) for p in tgt_patterns]
         self.tgt_files = list(zip(* tgt_file_lists))
+        
+        # self.style_files = self.style_files[:1]
+        # self.in_files = self.in_files[:1]
+        # self.tgt_files = self.tgt_files[:1]
 
         if len(self.style_files) != len(self.in_files) != len(self.tgt_files):
             raise ValueError('number of style, input, and target files do not match')
@@ -64,7 +68,7 @@ class FieldDataset(Dataset):
         if self.nfile == 0:
             raise FileNotFoundError('file not found for {}'.format(in_patterns))
 
-        self.style_size = np.loadtxt(self.style_files[0]).shape[0]
+        self.style_size = np.loadtxt(self.style_files[0], ndmin=1).shape[0]
         self.in_chan = [np.load(f, mmap_mode='r').shape[0]
                         for f in self.in_files[0]]
         self.tgt_chan = [np.load(f, mmap_mode='r').shape[0]
@@ -155,7 +159,7 @@ class FieldDataset(Dataset):
     def __getitem__(self, idx):
         ifile, icrop = divmod(idx, self.ncrop)
 
-        style = np.loadtxt(self.style_files[ifile])
+        style = np.loadtxt(self.style_files[ifile], ndmin=1)
         in_fields = [np.load(f) for f in self.in_files[ifile]]
         tgt_fields = [np.load(f) for f in self.tgt_files[ifile]]
 
@@ -193,8 +197,9 @@ class FieldDataset(Dataset):
                 norm(x, **self.kwargs)
         if self.tgt_norms is not None:
             for norm, x in zip(self.tgt_norms, tgt_fields):
-                norm = import_attr(norm, norms, callback_at=self.callback_at)
-                norm(x, **self.kwargs)
+                # norm = import_attr(norm, norms, callback_at=self.callback_at)
+                # norm(x, **self.kwargs)
+                x /= norm
 
         if self.augment:
             flip_axes = flip(in_fields, None, self.ndim)
