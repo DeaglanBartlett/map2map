@@ -192,11 +192,13 @@ class FieldDataset(Dataset):
         tgt_fields = [torch.from_numpy(f).to(torch.float32) for f in tgt_fields]
 
         if self.in_norms is not None:
-            for norm, x in zip(self.in_norms, in_fields):
+            in_norms = np.atleast_1d(self.in_norms[ifile])
+            for norm, x in zip(in_norms, in_fields):
                 norm = import_attr(norm, norms, callback_at=self.callback_at)
                 norm(x, **self.kwargs)
         if self.tgt_norms is not None:
-            for norm, x in zip(self.tgt_norms, tgt_fields):
+            tgt_norms = np.atleast_1d(self.tgt_norms[ifile])
+            for norm, x in zip(tgt_norms, tgt_fields):
                 # norm = import_attr(norm, norms, callback_at=self.callback_at)
                 # norm(x, **self.kwargs)
                 x /= norm
