@@ -146,7 +146,7 @@ def plt_power(*fields, dis=None, label=None, **kwargs):
 
         ks, Ps = [], []
         for field in fields:
-            k, P, _ = power(field)
+            k, P, _ = power.power(field)
             ks.append(k)
             Ps.append(P)
 
