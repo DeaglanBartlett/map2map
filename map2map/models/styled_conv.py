@@ -17,7 +17,7 @@ class ConvStyledBlock(nn.Module):
     'D': downsampling convolution of kernel size 2 and stride 2
     """
     def __init__(self, style_size, in_chan, out_chan=None, mid_chan=None,
-            kernel_size=3, stride=1, seq='CBA'):
+            kernel_size=3, stride=1, padding=0, seq='CBA'):
         super().__init__()
 
         if out_chan is None:
@@ -30,6 +30,7 @@ class ConvStyledBlock(nn.Module):
             self.mid_chan = max(in_chan, out_chan)
         self.kernel_size = kernel_size
         self.stride = stride
+        self.padding = padding
 
         self.norm_chan = in_chan
         self.idx_conv = 0
@@ -43,15 +44,15 @@ class ConvStyledBlock(nn.Module):
         if l == 'U':
             in_chan, out_chan = self._setup_conv()
             return ConvStyled3d(self.style_size, in_chan, out_chan, 2, stride=2,
-                                resample = 'U')
+                                padding=self.padding, resample = 'U')
         elif l == 'D':
             in_chan, out_chan = self._setup_conv()
             return ConvStyled3d(self.style_size, in_chan, out_chan, 2, stride=2,
-                                resample = 'D')
+                                padding=self.padding, resample = 'D')
         elif l == 'C':
             in_chan, out_chan = self._setup_conv()
             return ConvStyled3d(self.style_size, in_chan, out_chan, self.kernel_size,
-                                stride=self.stride)
+                                padding=self.padding, stride=self.stride)
         elif l == 'B':
             return BatchNormStyled3d(self.norm_chan)
         elif l == 'A':
@@ -93,7 +94,7 @@ class ResStyledBlock(ConvStyledBlock):
     See `ConvStyledBlock` for `seq` types.
     """
     def __init__(self, style_size, in_chan, out_chan=None, mid_chan=None,
-                 kernel_size=3, stride=1, seq='CBACBA', last_act=None):
+                 kernel_size=3, stride=1, padding=0, seq='CBACBA', last_act=None):
         if last_act is None:
             last_act = seq[-1] == 'A'
         elif last_act and seq[-1] != 'A':
@@ -107,7 +108,7 @@ class ResStyledBlock(ConvStyledBlock):
             seq = seq[:-1]
 
         super().__init__(style_size, in_chan, out_chan=out_chan, mid_chan=mid_chan,
-                         kernel_size=kernel_size, stride=stride, seq=seq)
+                         kernel_size=kernel_size, stride=stride, padding=padding, seq=seq)
 
         if last_act:
             self.act = LeakyReLUStyled()

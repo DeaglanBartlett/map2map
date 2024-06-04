@@ -88,7 +88,7 @@ class ConvStyled3d(nn.Module):
     Weight and bias initialization from `torch.nn._ConvNd.reset_parameters()`.
     """
     def __init__(self, style_size, in_chan, out_chan, kernel_size=3, stride=1,
-                 bias=True, resample=None):
+                 padding=0, bias=True, resample=None):
         super().__init__()
 
         self.style_weight = nn.Parameter(torch.empty(in_chan, style_size))
@@ -128,6 +128,8 @@ class ConvStyled3d(nn.Module):
             nn.init.uniform_(self.bias, -bound, bound)
         else:
             self.register_parameter('bias', None)
+            
+        self.padding = padding
 
     def forward(self, x, s, eps=1e-8):
         N, Cin, *DHWin = x.shape
@@ -155,7 +157,7 @@ class ConvStyled3d(nn.Module):
 
         w = w.reshape(N * C0, C1, *K3)
         x = x.reshape(1, N * Cin, *DHWin)
-        x = self.conv(x, w, bias=self.bias.repeat(N), stride=self.stride, groups=N)
+        x = self.conv(x, w, bias=self.bias.repeat(N), stride=self.stride, groups=N, padding=self.padding)
         _, _, *DHWout = x.shape
         x = x.reshape(N, Cout, *DHWout)
 
