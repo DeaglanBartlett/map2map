@@ -246,11 +246,16 @@ def train(epoch, loader, model, criterion,
     for i, data in enumerate(loader):
         batch = epoch * len(loader) + i + 1
 
-        style, input, target = data['style'], data['input'], data['target']
+        style, input, target, extra = data['style'], data['input'], data['target'], data['extra']
+        
+        if (extra is not None) and (len(extra) == 0):
+            extra = None
 
         style = style.to(device, non_blocking=True)
         input = input.to(device, non_blocking=True)
         target = target.to(device, non_blocking=True)
+        if (extra is not None) and hasattr(extra, "to"):
+            extra = extra.to(device, non_blocking=True)
 
         output = model(input, style)
         if batch <= 5 and rank == 0:
@@ -263,11 +268,18 @@ def train(epoch, loader, model, criterion,
         if (hasattr(model.module, 'scale_factor')
                 and model.module.scale_factor != 1):
             input = resample(input, model.module.scale_factor, narrow=False)
-        input, output, target = narrow_cast(input, output, target)
+        if extra is None:
+            input, output, target = narrow_cast(input, output, target)
+        else:
+            input, output, target, extra = narrow_cast(input, output, target, extra)
         if batch <= 5 and rank == 0:
             print('narrowed shape :', output.shape)
 
-        loss = criterion(output, target)
+        if extra is None:
+            loss = criterion(output, target)
+        else:
+            loss = criterion(output+extra, target+extra)
+                
         epoch_loss[0] += loss.detach()
 
 
@@ -331,20 +343,32 @@ def validate(epoch, loader, model, criterion, logger, device, args):
 
     with torch.no_grad():
         for data in loader:
-            style, input, target = data['style'], data['input'], data['target']
+            style, input, target, extra = data['style'], data['input'], data['target'], data['extra']
+            
+            if (extra is not None) and (len(extra) == 0):
+                extra = None
 
             style = style.to(device, non_blocking=True)
             input = input.to(device, non_blocking=True)
             target = target.to(device, non_blocking=True)
+            if extra is not None:
+                extra = extra.to(device, non_blocking=True)
 
             output = model(input, style)
 
             if (hasattr(model.module, 'scale_factor')
                     and model.module.scale_factor != 1):
                 input = resample(input, model.module.scale_factor, narrow=False)
-            input, output, target = narrow_cast(input, output, target)
-
-            loss = criterion(output, target)
+            if extra is None:
+                input, output, target = narrow_cast(input, output, target)
+            else:
+                input, output, target, extra = narrow_cast(input, output, target, extra)
+            
+            if extra is None:
+                loss = criterion(output, target)
+            else:
+                loss = criterion(output+extra, target+extra)
+                
             epoch_loss[0] += loss.detach()
 
     dist.all_reduce(epoch_loss)

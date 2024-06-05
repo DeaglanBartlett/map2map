@@ -18,6 +18,9 @@ class FieldDataset(Dataset):
     Each pattern in the list is a new field.
     Likewise `tgt_patterns` is for target fields.
     Input and target fields are matched by sorting the globbed files.
+    
+    Here we add in `extra_patterns` for an additional field to be loaded,
+    which may be used for computing the loss.
 
     `in_norms` is a list of of functions to normalize the input fields.
     Likewise for `tgt_norms`.
@@ -44,6 +47,7 @@ class FieldDataset(Dataset):
     the input resolution.
     """
     def __init__(self, style_pattern, in_patterns, tgt_patterns,
+                 extra_patterns=None, extra_norms=None, extra_pad=0,
                  in_norms=None, tgt_norms=None, callback_at=None,
                  augment=False, aug_shift=None, aug_add=None, aug_mul=None,
                  crop=None, crop_start=None, crop_stop=None, crop_step=None,
@@ -56,9 +60,17 @@ class FieldDataset(Dataset):
 
         tgt_file_lists = [sorted(glob(p)) for p in tgt_patterns]
         self.tgt_files = list(zip(* tgt_file_lists))
+        
+        if extra_patterns is None:
+            self.extra_files = None
+        else:
+            extra_file_lists = [sorted(glob(p)) for p in extra_patterns]
+            self.extra_files = list(zip(* extra_file_lists))
 
         if len(self.style_files) != len(self.in_files) != len(self.tgt_files):
             raise ValueError('number of style, input, and target files do not match')
+        if (self.extra_files is not None) and (len(self.style_files) != len(self.extra_files)):
+            raise ValueError('number of style and extra files do not match')
         self.nfile = len(self.in_files)
         
         print('Number of files:', self.nfile)
@@ -71,6 +83,11 @@ class FieldDataset(Dataset):
                         for f in self.in_files[0]]
         self.tgt_chan = [np.load(f, mmap_mode='r').shape[0]
                          for f in self.tgt_files[0]]
+        if self.extra_files is None:
+            self.extra_chan = None
+        else:
+            self.extra_chan = [np.load(f, mmap_mode='r').shape[0]
+                         for f in self.extra_files[0]]
 
         self.size = np.load(self.in_files[0][0], mmap_mode='r').shape[1:]
         self.size = np.asarray(self.size)
@@ -83,6 +100,10 @@ class FieldDataset(Dataset):
         if tgt_norms is not None and len(tgt_patterns) != len(tgt_norms):
             raise ValueError('numbers of target normalization functions and fields do not match')
         self.tgt_norms = tgt_norms
+        
+        if extra_norms is not None and len(extra_patterns) != len(extra_norms):
+            raise ValueError('numbers of extra normalization functions and fields do not match')
+        self.extra_norms = extra_norms
 
         self.callback_at = callback_at
 
@@ -132,6 +153,7 @@ class FieldDataset(Dataset):
             return pad.reshape(ndim, 2)
         self.in_pad = format_pad(in_pad, self.ndim)
         self.tgt_pad = format_pad(tgt_pad, self.ndim)
+        self.extra_pad = format_pad(extra_pad, self.ndim)
 
         if scale_factor != 1:
             tgt_size = np.load(self.tgt_files[0][0], mmap_mode='r').shape[1:]
@@ -160,6 +182,10 @@ class FieldDataset(Dataset):
         style = np.loadtxt(self.style_files[ifile], ndmin=1)
         in_fields = [np.load(f) for f in self.in_files[ifile]]
         tgt_fields = [np.load(f) for f in self.tgt_files[ifile]]
+        if self.extra_files is None:
+            extra_fields = []
+        else:
+            extra_fields = [np.load(f) for f in self.extra_files[ifile]]
 
         anchor = self.anchors[icrop]
 
@@ -184,10 +210,16 @@ class FieldDataset(Dataset):
         crop(tgt_fields, anchor * self.scale_factor,
              self.crop[argsort_perm_axes] * self.scale_factor,
              self.tgt_pad[argsort_perm_axes])
+        if len(extra_fields) > 0:
+            crop(extra_fields, anchor * self.scale_factor,
+             self.crop[argsort_perm_axes] * self.scale_factor,
+             self.extra_pad[argsort_perm_axes])
 
         style = torch.from_numpy(style).to(torch.float32)
         in_fields = [torch.from_numpy(f).to(torch.float32) for f in in_fields]
         tgt_fields = [torch.from_numpy(f).to(torch.float32) for f in tgt_fields]
+        if len(extra_fields) > 0:
+            extra_fields = [torch.from_numpy(f).to(torch.float32) for f in extra_fields]
 
         if self.in_norms is not None:
             in_norms = np.atleast_1d(self.in_norms[ifile])
@@ -200,36 +232,59 @@ class FieldDataset(Dataset):
                 # norm = import_attr(norm, norms, callback_at=self.callback_at)
                 # norm(x, **self.kwargs)
                 x /= norm
+        if self.extra_norms is not None:
+            extra_norms = np.atleast_1d(self.extra_norms[ifile])
+            for norm, x in zip(extra_norms, extra_fields):
+                # norm = import_attr(norm, norms, callback_at=self.callback_at)
+                # norm(x, **self.kwargs)
+                x /= norm
 
         if self.augment:
             flip_axes = flip(in_fields, None, self.ndim)
             flip_axes = flip(tgt_fields, flip_axes, self.ndim)
+            if len(extra_fields) > 0:
+                flip_axes = flip(extra_fields, flip_axes, self.ndim)
 
             perm_axes = perm(in_fields, perm_axes, self.ndim)
             perm_axes = perm(tgt_fields, perm_axes, self.ndim)
+            if len(extra_fields) > 0:
+                perm_axes = perm(extra_fields, perm_axes, self.ndim)
 
         if self.aug_add is not None:
             add_fac = add(in_fields, None, self.aug_add)
             add_fac = add(tgt_fields, add_fac, self.aug_add)
+            if len(extra_fields) > 0:
+                add_fac = add(extra_fields, add_fac, self.aug_add)
 
         if self.aug_mul is not None:
             mul_fac = mul(in_fields, None, self.aug_mul)
             mul_fac = mul(tgt_fields, mul_fac, self.aug_mul)
+            if len(extra_fields) > 0:
+                mul_fac = mul(extra_fields, mul_fac, self.aug_mul)
 
         in_fields = torch.cat(in_fields, dim=0)
         tgt_fields = torch.cat(tgt_fields, dim=0)
+        if len(extra_fields) > 0:
+            extra_fields = torch.cat(extra_fields, dim=0)
 
         #in_relpath = [os.path.relpath(file, start=self.commonpath)
         #              for file in self.in_files[ifile]]
         tgt_relpath = [os.path.relpath(file, start=self.commonpath)
                        for file in self.tgt_files[ifile]]
+        if self.extra_files is not None:
+            extra_relpath = [os.path.relpath(file, start=self.commonpath)
+                       for file in self.extra_files[ifile]]
+        else:
+            extra_relpath = []
 
         return {
             'style': style,
             'input': in_fields,
             'target': tgt_fields,
+            'extra': extra_fields,
             #'input_relpath': in_relpath,
             'target_relpath': tgt_relpath,
+            'extra_relpath': extra_relpath,
         }
 
     def assemble(self, label, chan, patches, paths):
@@ -246,6 +301,8 @@ class FieldDataset(Dataset):
         will write to `'d/scalar_out.npy'` and `'d/vector_out.npy'`.
 
         Note that `paths` assumes transposed shape due to pytorch auto batching
+        
+        NOTE: No attempt to add extra fields here
         """
         if self.scale_factor != 1:
             raise NotImplementedError
